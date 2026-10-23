@@ -48,8 +48,8 @@
       margin-bottom: 8px;
     }
     .emblem-box {
-      width: 50px;
-      height: 50px;
+      width: 48px;
+      height: 48px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -61,7 +61,7 @@
       object-fit: contain;
     }
     .walpass-box {
-      height: 38px;
+      height: 36px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -79,15 +79,7 @@
       text-shadow: 0 1px 3px rgba(0,0,0,0.4);
     }
 
-    /* タイトル群 */
-    .main-title {
-      font-size: 22px;
-      font-weight: 900;
-      letter-spacing: 1px;
-      color: #ffffff;
-      margin-bottom: 3px;
-      text-shadow: 0 2px 6px rgba(0,0,0,0.35);
-    }
+    /* タイトル（スタイリッシュな英語サブのみ） */
     .sub-title-en {
       font-family: 'Oswald', sans-serif;
       font-size: 13.5px;
@@ -217,6 +209,7 @@
       justify-content: center;
       align-items: center;
       padding: 16px;
+      touch-action: pan-y;
     }
     .modal-overlay.open { display: flex; }
     
@@ -268,6 +261,8 @@
       align-items: center;
       justify-content: center;
     }
+
+    /* 写真エリア ＆ 左右矢印ボタン */
     .modal-img-wrapper {
       width: 100%;
       background: #0f172a;
@@ -276,13 +271,43 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      position: relative;
+      user-select: none;
     }
     .modal-img {
       width: 100%;
       height: auto;
       max-height: 380px;
       object-fit: contain;
+      transition: opacity 0.15s ease;
     }
+    .nav-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #ffffff;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 5;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .nav-btn:active { transform: translateY(-50%) scale(0.92); }
+    .nav-btn.prev { left: 10px; }
+    .nav-btn.next { right: 10px; }
+    .nav-btn:disabled {
+      opacity: 0.2;
+      cursor: not-allowed;
+    }
+
     .modal-menu-body {
       padding: 18px;
     }
@@ -293,8 +318,13 @@
       margin-bottom: 12px;
       display: flex;
       align-items: center;
-      gap: 6px;
+      justify-content: space-between;
       letter-spacing: 0.5px;
+    }
+    .swipe-tip {
+      font-size: 11px;
+      font-weight: 400;
+      color: #94a3b8;
     }
     .modal-menu-list {
       list-style: none;
@@ -355,11 +385,19 @@
         <div class="modal-date" id="modalDate">🍱 10月23日 (金)</div>
         <button class="modal-close" onclick="closeModal()">&times;</button>
       </div>
-      <div class="modal-img-wrapper">
+      
+      <!-- 写真表示部 ＋ 左右移動ボタン -->
+      <div class="modal-img-wrapper" id="swipeArea">
+        <button class="nav-btn prev" id="prevBtn" onclick="navigateDetail(-1)">❮</button>
         <img id="modalImg" class="modal-img" src="" alt="お弁当写真">
+        <button class="nav-btn next" id="nextBtn" onclick="navigateDetail(1)">❯</button>
       </div>
+      
       <div class="modal-menu-body">
-        <div class="modal-menu-title">📋 本日のメニュー内容</div>
+        <div class="modal-menu-title">
+          <span>📋 本日のメニュー内容</span>
+          <span class="swipe-tip">左右スワイプで前後に移動 ⇄</span>
+        </div>
         <ul class="modal-menu-list" id="modalMenuList"></ul>
       </div>
     </div>
@@ -370,6 +408,8 @@
 
     let allBentoData = [];
     let activeMonth = "すべて";
+    let currentIndex = 0;
+    let currentFilteredList = [];
 
     // JSONPコールバック関数
     window.handleBentoData = function(data) {
@@ -419,16 +459,16 @@
       renderGrid();
     }
 
-    // グリッド描画（Googleフォト風2列タイル）
+    // グリッド描画
     function renderGrid() {
       document.getElementById("loading").style.display = "none";
       const container = document.getElementById("gridContainer");
 
-      const filtered = activeMonth === "すべて" 
+      currentFilteredList = activeMonth === "すべて" 
         ? allBentoData 
         : allBentoData.filter(item => item.yearMonth === activeMonth);
 
-      if (filtered.length === 0) {
+      if (currentFilteredList.length === 0) {
         container.innerHTML = `
           <div style="grid-column: span 2; text-align:center; padding:60px 20px; color:#64748b;">
             <p>この月のお弁当記録はありません</p>
@@ -437,7 +477,7 @@
         return;
       }
 
-      container.innerHTML = filtered.map((item, index) => `
+      container.innerHTML = currentFilteredList.map((item, index) => `
         <div class="grid-item" onclick="openDetail(${index})">
           <img src="${item.imageUrl}" alt="${item.date}のお弁当" class="grid-img" loading="lazy">
           <div class="grid-date-badge">
@@ -448,18 +488,24 @@
       `).join('');
     }
 
-    // ポップアップ（詳細モーダル）の表示
-    let currentFilteredList = [];
+    // 詳細モーダルの表示
     function openDetail(index) {
-      currentFilteredList = activeMonth === "すべて" 
-        ? allBentoData 
-        : allBentoData.filter(item => item.yearMonth === activeMonth);
+      currentIndex = index;
+      updateModalContent();
+      document.getElementById("detailModal").classList.add("open");
+      document.body.style.overflow = "hidden";
+    }
 
-      const item = currentFilteredList[index];
+    // モーダル内のコンテンツ更新
+    function updateModalContent() {
+      const item = currentFilteredList[currentIndex];
       if (!item) return;
 
       document.getElementById("modalDate").innerHTML = `<span>🍱</span> ${item.date}`;
-      document.getElementById("modalImg").src = item.imageUrl;
+      const img = document.getElementById("modalImg");
+      img.style.opacity = "0.3";
+      img.src = item.imageUrl;
+      img.onload = () => { img.style.opacity = "1"; };
 
       const menuList = document.getElementById("modalMenuList");
       if (item.menu && item.menu.length > 0) {
@@ -470,13 +516,23 @@
         menuList.innerHTML = `<li class="modal-menu-item" style="color:#94a3b8;">メニュー登録なし</li>`;
       }
 
-      document.getElementById("detailModal").classList.add("open");
-      document.body.style.overflow = "hidden"; // 背景スクロール停止
+      // ナビボタンの活性/非活性
+      document.getElementById("prevBtn").disabled = (currentIndex === 0);
+      document.getElementById("nextBtn").disabled = (currentIndex === currentFilteredList.length - 1);
+    }
+
+    // 前後の写真へ移動
+    function navigateDetail(direction) {
+      const newIndex = currentIndex + direction;
+      if (newIndex >= 0 && newIndex < currentFilteredList.length) {
+        currentIndex = newIndex;
+        updateModalContent();
+      }
     }
 
     function closeModal() {
       document.getElementById("detailModal").classList.remove("open");
-      document.body.style.overflow = ""; // スクロール再開
+      document.body.style.overflow = "";
     }
 
     function closeModalOnOverlay(e) {
@@ -485,12 +541,42 @@
       }
     }
 
-    // ESCキーで閉じる
+    // キーボード操作（← → ESC）
     window.addEventListener("keydown", (e) => {
+      if (!document.getElementById("detailModal").classList.contains("open")) return;
+      if (e.key === "ArrowLeft") navigateDetail(-1);
+      if (e.key === "ArrowRight") navigateDetail(1);
       if (e.key === "Escape") closeModal();
     });
 
-    // 初期読み込み実行
+    // スマホのタッチスワイプ操作対応
+    let touchStartX = 0;
+    let touchEndX = 0;
+    const swipeArea = document.getElementById("swipeArea");
+
+    swipeArea.addEventListener("touchstart", (e) => {
+      touchStartX = e.changedTouches[0].screenX;
+    }, { passive: true });
+
+    swipeArea.addEventListener("touchend", (e) => {
+      touchEndX = e.changedTouches[0].screenX;
+      handleSwipe();
+    }, { passive: true });
+
+    function handleSwipe() {
+      const diffX = touchEndX - touchStartX;
+      if (Math.abs(diffX) > 40) {
+        if (diffX > 0) {
+          // 右スワイプ（前へ）
+          navigateDetail(-1);
+        } else {
+          // 左スワイプ（次へ）
+          navigateDetail(1);
+        }
+      }
+    }
+
+    // 初期実行
     fetchBentoData();
   </script>
 </body>
